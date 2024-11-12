@@ -33,7 +33,7 @@ async def main(room_url: str, token: str , config_b64):
     transport = DailyTransport(
         room_url,
         token,
-        "Chatbot",
+        "John",
         DailyParams(
             api_url=daily_api_url,
             api_key=daily_api_key,
@@ -56,7 +56,7 @@ async def main(room_url: str, token: str , config_b64):
         )
     tts = CartesiaTTSService(
             api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id=os.getenv("CARTESIA_VOICE_ID"),
+            voice_id=config['voice_id'],
             params=tts_params
         )
 

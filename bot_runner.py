@@ -10,7 +10,7 @@ import subprocess
 import os
 import json
 import base64
-
+import time 
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -153,7 +153,7 @@ async def start_bot(config: BotConfig) -> JSONResponse:
     room_url = os.getenv("DAILY_SAMPLE_ROOM_URL", "")
 
     if not room_url:
-        params = DailyRoomParams(properties=DailyRoomProperties())
+        params = DailyRoomParams(properties=DailyRoomProperties(exp=time.time() + 10 * 60))
         try:
             room: DailyRoomObject = await daily_helpers["rest"].create_room(params=params)
         except Exception as e:
