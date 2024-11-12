@@ -2,6 +2,8 @@ import asyncio
 import os
 import sys
 import argparse
+import json
+import  base64
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.pipeline.pipeline import Pipeline
@@ -27,7 +29,7 @@ daily_api_key = os.getenv("DAILY_API_KEY", "")
 daily_api_url = os.getenv("DAILY_API_URL", "https://api.daily.co/v1")
 
 
-async def main(room_url: str, token: str):
+async def main(room_url: str, token: str , config_b64):
     transport = DailyTransport(
         room_url,
         token,
@@ -44,10 +46,18 @@ async def main(room_url: str, token: str):
         ),
     )
 
- 
+    config_str = base64.b64decode(config_b64).decode()
+    config = json.loads(config_str)
+
+
+    tts_params = CartesiaTTSService.InputParams(
+            speed=config["speed"],
+            emotion=config["emotion"]
+        )
     tts = CartesiaTTSService(
             api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id=os.getenv("CARTESIA_VOICE_ID")
+            voice_id=os.getenv("CARTESIA_VOICE_ID"),
+            params=tts_params
         )
 
     llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
@@ -55,7 +65,7 @@ async def main(room_url: str, token: str):
     messages = [
         {
             "role": "system",
-            "content": "You are Chatbot, a friendly, helpful robot. Your output will be converted to audio so don't include special characters other than '!' or '?' in your answers. Respond to what the user said in a creative and helpful way, but keep your responses brief. Start by saying hello.",
+            "content": config["prompt"],
         },
     ]
 
@@ -96,8 +106,9 @@ async def main(room_url: str, token: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pipecat Bot")
-    parser.add_argument("-u", type=str, help="Room URL")
-    parser.add_argument("-t", type=str, help="Token")
-    config = parser.parse_args()
+    parser.add_argument("-u", required=True,type=str, help="Room URL")
+    parser.add_argument("-t",  required=True,type=str, help="Token")
+    parser.add_argument("--config", required=True, help="Base64 encoded configuration")
+    args = parser.parse_args()
 
-    asyncio.run(main(config.u, config.t))
+    asyncio.run(main(args.u, args.t, args.config))

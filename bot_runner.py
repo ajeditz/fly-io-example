@@ -8,6 +8,11 @@ import aiohttp
 import argparse
 import subprocess
 import os
+import json
+import base64
+
+from pydantic import BaseModel, Field
+from typing import Optional
 
 from contextlib import asynccontextmanager
 
@@ -45,6 +50,15 @@ FLY_HEADERS = {"Authorization": f"Bearer {FLY_API_KEY}", "Content-Type": "applic
 daily_helpers = {}
 
 
+class BotConfig(BaseModel):
+    speed: str = Field("normal", description="Voice speed (slow/normal/fast)")
+    emotion: list[str] = Field(["positivity:high", "curiosity"], description="List of emotions for the voice")
+    prompt: str = Field("You are a friendly customer service agent...", description="System prompt for the bot")
+    voice_id: str = Field("a0e99841-438c-4a64-b679-ae501e7d6091", description="Voice ID for TTS")
+    session_time: Optional[float] = Field(3600, description="Session expiry time in seconds")
+
+
+
 # ----------------- API ----------------- #
 
 
@@ -73,7 +87,7 @@ app.add_middleware(
 # ----------------- Main ----------------- #
 
 
-async def spawn_fly_machine(room_url: str, token: str):
+async def spawn_fly_machine(room_url: str, token: str, config:BotConfig):
     async with aiohttp.ClientSession() as session:
         # Use the same image as the bot runner
         async with session.get(
@@ -86,8 +100,11 @@ async def spawn_fly_machine(room_url: str, token: str):
             data = await r.json()
             image = data[0]["config"]["image"]
 
+        config_str = json.dumps(config.model_dump())
+        config_b64 = base64.b64encode(config_str.encode()).decode()
+
         # Machine configuration
-        cmd = f"python3 bot.py -u {room_url} -t {token}"
+        cmd = f"python3 bot.py -u {room_url} -t {token} --config {config_b64}"
         cmd = cmd.split()
         worker_props = {
             "config": {
@@ -123,9 +140,9 @@ async def spawn_fly_machine(room_url: str, token: str):
 
 
 @app.post("/")
-async def start_bot(request: Request) -> JSONResponse:
+async def start_bot(config: BotConfig) -> JSONResponse:
     try:
-        data = await request.json()
+        data = await config.model_dump_json()
         # Is this a webhook creation request?
         if "test" in data:
             return JSONResponse({"test": True})
@@ -156,11 +173,14 @@ async def start_bot(request: Request) -> JSONResponse:
 
     # Launch a new fly.io machine, or run as a shell process (not recommended)
     run_as_process = os.getenv("RUN_AS_PROCESS", False)
+    config_str = json.dumps(config.model_dump())
+    config_b64 = base64.b64encode(config_str.encode()).decode()
+
 
     if run_as_process:
         try:
             subprocess.Popen(
-                [f"python3 -m bot -u {room.url} -t {token}"],
+                [f"python3 -m bot -u {room.url} -t {token} --config {config_b64}"],
                 shell=True,
                 bufsize=1,
                 cwd=os.path.dirname(os.path.abspath(__file__)),
@@ -169,7 +189,7 @@ async def start_bot(request: Request) -> JSONResponse:
             raise HTTPException(status_code=500, detail=f"Failed to start subprocess: {e}")
     else:
         try:
-            await spawn_fly_machine(room.url, token)
+            await spawn_fly_machine(room.url, token, config)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to spawn VM: {e}")
 
